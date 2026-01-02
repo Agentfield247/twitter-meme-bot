@@ -1,7 +1,6 @@
 require("dotenv").config();
 const axios = require("axios");
 const { createClient } = require("@supabase/supabase-js");
-const { decode } = require("html-entities"); // You might need this, but for now we'll do basic decoding
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -33,16 +32,17 @@ async function scrapeWithProxy() {
     for (const post of posts) {
       const content = post.content || post.description || "";
 
-      // FIX: Capture everything inside src="..." quotes, even if it has ?s=... codes
+      // FIX: Find the image source inside quotes
       const imageMatch = content.match(/src="([^"]+)"/);
 
       if (imageMatch) {
-        // RSS feeds encoded symbols like &amp; to &, we must fix that
+        // Fix the link (RSS turns '&' into '&amp;', we switch it back)
         let imageUrl = imageMatch[1].replace(/&amp;/g, "&");
 
         const title = post.title;
         const uniqueId = post.guid;
 
+        // Save to Database
         const { error } = await supabase.from("meme_queue").insert([
           {
             title: title,
@@ -55,6 +55,9 @@ async function scrapeWithProxy() {
         if (!error) {
           console.log(`   ✅ SAVED: ${title.substring(0, 30)}...`);
           count++;
+        } else if (error.code !== "23505") {
+          // Ignore duplicates (23505), but show other errors
+          console.error(`   ⚠️ DB Error: ${error.message}`);
         }
       }
     }
