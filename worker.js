@@ -15,6 +15,31 @@ const twitterClient = new TwitterApi({
   accessSecret: process.env.TWITTER_ACCESS_SECRET,
 });
 
+// --- NEW: THE ENGAGEMENT HOOKS ---
+const HOOKS = [
+  "Tag a friend who is exactly like this 👇",
+  "Why does this hit so hard? 😂",
+  "GM, Let's connect",
+  "If this isn't me, I don't know what is.",
+  "Who else feels attacked by this?",
+  "Send this to your work bestie.",
+  "Valid or nah?",
+  "I'm in this picture and I don't like it.",
+  "Type 'YES' if you relate.",
+  "Daily reminder: You are doing great (but this is funny).",
+];
+
+const HASHTAGS = [
+  "#memes",
+  "#humor",
+  "#relatable",
+  "#funny",
+  "#lol",
+  "#dailyhumor",
+  "#trending",
+  "#memelo1d",
+];
+
 async function postNextMeme() {
   console.log("🤖 Worker waking up...");
 
@@ -32,34 +57,44 @@ async function postNextMeme() {
   console.log(`🎯 Processing: ${meme.title}`);
 
   try {
-    // Attempt download via Proxy
+    // Download via Proxy (The "Laundry")
     const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(meme.image_url)}&output=jpg`;
-
     const imageResponse = await axios.get(proxyUrl, {
       responseType: "arraybuffer",
     });
     const imageBuffer = Buffer.from(imageResponse.data);
 
-    // Upload & Tweet
+    // Upload Media
     const mediaId = await twitterClient.v1.uploadMedia(imageBuffer, {
       mimeType: "image/jpeg",
     });
+
+    // --- NEW: CONSTRUCT THE SUPER CAPTION ---
+
+    // 1. Pick a random Hook
+    const randomHook = HOOKS[Math.floor(Math.random() * HOOKS.length)];
+
+    // 2. Pick 3 random Hashtags (Don't spam the same ones)
+    const shuffledTags = HASHTAGS.sort(() => 0.5 - Math.random());
+    const selectedTags = shuffledTags.slice(0, 3).join(" ");
+
+    // 3. Build the Tweet Text
+    // Structure: "Meme Title" + "Invisible Char" + "Engagement Hook" + "Hashtags"
+    const finalTweet = `${meme.title}\n\n${randomHook}\n\n${selectedTags}`;
+
     await twitterClient.v2.tweet({
-      text: `${meme.title} #memes #fun`,
+      text: finalTweet,
       media: { media_ids: [mediaId] },
     });
 
-    // Success: Mark as Published
     await supabase
       .from("meme_queue")
       .update({ status: "published" })
       .eq("id", meme.id);
-    console.log(`🚀 SUCCESS! Posted tweet ID: ${meme.id}`);
+    console.log(`🚀 SUCCESS! Posted with Hook: "${randomHook}"`);
   } catch (err) {
     console.error("❌ Error posting meme:", err.message);
-
-    // CRITICAL FIX: If it fails, mark as 'error' so we don't get stuck!
-    console.log("🗑️ Trashing bad meme to unblock queue...");
+    console.log("🗑️ Trashing bad meme...");
     await supabase
       .from("meme_queue")
       .update({ status: "error" })
