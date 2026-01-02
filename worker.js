@@ -44,10 +44,16 @@ async function postNextMeme() {
   }
 
   try {
-    // 2. Download Image
+    // 2. Download Image (WITH THE FIX: "User-Agent" Mask)
+    // We pretend to be a regular browser so Reddit lets us download the file
     const imageResponse = await axios.get(meme.image_url, {
       responseType: "arraybuffer",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
     });
+
     const imageBuffer = Buffer.from(imageResponse.data);
 
     // 3. Upload to Twitter
