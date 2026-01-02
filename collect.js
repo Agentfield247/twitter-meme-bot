@@ -24,11 +24,11 @@ async function scrapeReddit() {
   console.log(`🌍 Fetching from: r/${randomSub}`);
 
   try {
-    // FIX: Add a custom User-Agent to bypass the 403 Block
+    // FIX: Use a "Bot" User-Agent instead of a "Browser" one.
+    // Reddit allows bots if they identify themselves honestly.
     const response = await axios.get(url, {
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "User-Agent": "script:meme-bot:v1.0 (by /u/tweet_bot_dev)",
       },
     });
 
@@ -38,10 +38,8 @@ async function scrapeReddit() {
     for (const post of posts) {
       const { title, url, id, post_hint, is_video } = post.data;
 
-      // Skip Videos
       if (is_video || url.includes("v.redd.it")) continue;
 
-      // Check for Image
       const isImage = url.match(/\.(jpg|jpeg|png|webp)$/i);
 
       if (post_hint === "image" && isImage) {
@@ -55,7 +53,7 @@ async function scrapeReddit() {
               status: "pending",
             },
           ])
-          .ignore(); // Safely ignore duplicates
+          .ignore();
 
         if (!error) {
           console.log(`   ✅ SAVED: ${title}`);
@@ -66,7 +64,6 @@ async function scrapeReddit() {
     console.log(`\n🎉 Scrape finished. Added ${count} new memes.`);
   } catch (err) {
     console.error(`❌ Scraping failed: ${err.message}`);
-    // If Reddit blocks us, try a fallback URL (optional future improvement)
   }
 }
 
