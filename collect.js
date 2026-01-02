@@ -1,6 +1,7 @@
 require("dotenv").config();
 const axios = require("axios");
 const { createClient } = require("@supabase/supabase-js");
+const { decode } = require("html-entities"); // You might need this, but for now we'll do basic decoding
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -19,8 +20,6 @@ async function scrapeWithProxy() {
   console.log("🔍 Starting RSS Proxy Scraper...");
 
   const randomSub = SUBREDDITS[Math.floor(Math.random() * SUBREDDITS.length)];
-
-  // Use a public RSS-to-JSON bridge
   const redditRSS = `https://www.reddit.com/r/${randomSub}/top/.rss?t=day`;
   const proxyUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(redditRSS)}`;
 
@@ -28,28 +27,22 @@ async function scrapeWithProxy() {
 
   try {
     const response = await axios.get(proxyUrl);
-
-    if (response.data.status !== "ok") {
-      throw new Error("Proxy returned error");
-    }
-
     const posts = response.data.items;
     let count = 0;
 
     for (const post of posts) {
       const content = post.content || post.description || "";
 
-      // Regex to find ANY image url inside the HTML
-      const imageMatch = content.match(
-        /(https?:\/\/[^"'\s]+\.(?:jpg|jpeg|png|webp))/i,
-      );
+      // FIX: Capture everything inside src="..." quotes, even if it has ?s=... codes
+      const imageMatch = content.match(/src="([^"]+)"/);
 
       if (imageMatch) {
-        const imageUrl = imageMatch[1];
+        // RSS feeds encoded symbols like &amp; to &, we must fix that
+        let imageUrl = imageMatch[1].replace(/&amp;/g, "&");
+
         const title = post.title;
         const uniqueId = post.guid;
 
-        // FIX: Removed .ignore() and used standard error handling
         const { error } = await supabase.from("meme_queue").insert([
           {
             title: title,
@@ -62,11 +55,6 @@ async function scrapeWithProxy() {
         if (!error) {
           console.log(`   ✅ SAVED: ${title.substring(0, 30)}...`);
           count++;
-        } else if (error.code === "23505") {
-          // 23505 is the code for "Unique Violation" (Duplicate)
-          // We silently skip it
-        } else {
-          console.error(`   ❌ DB Error: ${error.message}`);
         }
       }
     }

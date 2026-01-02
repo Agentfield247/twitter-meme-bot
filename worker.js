@@ -18,7 +18,6 @@ const twitterClient = new TwitterApi({
 async function postNextMeme() {
   console.log("🤖 Worker waking up...");
 
-  // 1. Get the next pending meme
   const { data: meme, error } = await supabase
     .from("meme_queue")
     .select("*")
@@ -27,50 +26,44 @@ async function postNextMeme() {
     .single();
 
   if (error || !meme) {
-    return console.log("💤 No pending memes found in queue.");
+    return console.log("💤 No pending memes found.");
   }
 
-  console.log(`🎯 Found meme: ${meme.title}`);
+  console.log(`🎯 Processing: ${meme.title}`);
 
   try {
-    // 2. Download Image via "Laundering" Proxy
-    // We wrap the Reddit URL inside wsrv.nl to bypass the IP Block
-    // &output=jpg ensures we always get a format Twitter accepts
+    // Attempt download via Proxy
     const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(meme.image_url)}&output=jpg`;
-
-    console.log(`🌍 Downloading via proxy: ${proxyUrl}`);
 
     const imageResponse = await axios.get(proxyUrl, {
       responseType: "arraybuffer",
     });
-
     const imageBuffer = Buffer.from(imageResponse.data);
 
-    // 3. Upload to Twitter
+    // Upload & Tweet
     const mediaId = await twitterClient.v1.uploadMedia(imageBuffer, {
       mimeType: "image/jpeg",
     });
-
-    // 4. Create Tweet
-    const uniqueText = `${meme.title} \u200B\n\n#memes #fun`;
-
     await twitterClient.v2.tweet({
-      text: uniqueText,
+      text: `${meme.title} #memes #fun`,
       media: { media_ids: [mediaId] },
     });
 
-    // 5. Mark as Published
+    // Success: Mark as Published
     await supabase
       .from("meme_queue")
       .update({ status: "published" })
       .eq("id", meme.id);
-
-    console.log(`🚀 Successfully posted tweet ID: ${meme.id}`);
+    console.log(`🚀 SUCCESS! Posted tweet ID: ${meme.id}`);
   } catch (err) {
-    console.error("❌ Failed to post:", err.message);
+    console.error("❌ Error posting meme:", err.message);
 
-    // Optional: If it fails, mark it as 'error' so we don't get stuck on it forever
-    // await supabase.from('meme_queue').update({ status: 'error' }).eq('id', meme.id);
+    // CRITICAL FIX: If it fails, mark as 'error' so we don't get stuck!
+    console.log("🗑️ Trashing bad meme to unblock queue...");
+    await supabase
+      .from("meme_queue")
+      .update({ status: "error" })
+      .eq("id", meme.id);
   }
 }
 
