@@ -7,16 +7,20 @@ const supabase = createClient(
   process.env.SUPABASE_KEY,
 );
 
-const SUBREDDITS = ["memes", "ProgrammerHumor", "wholesomememes", "funny"];
+const SUBREDDITS = [
+  "memes",
+  "ProgrammerHumor",
+  "wholesomememes",
+  "funny",
+  "me_irl",
+];
 
 async function scrapeWithProxy() {
   console.log("🔍 Starting RSS Proxy Scraper...");
 
-  // 1. Pick a Subreddit
   const randomSub = SUBREDDITS[Math.floor(Math.random() * SUBREDDITS.length)];
 
-  // 2. Build the "Proxy" URL
-  // We ask rss2json to fetch Reddit's RSS feed for us
+  // Use a public RSS-to-JSON bridge
   const redditRSS = `https://www.reddit.com/r/${randomSub}/top/.rss?t=day`;
   const proxyUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(redditRSS)}`;
 
@@ -33,19 +37,20 @@ async function scrapeWithProxy() {
     let count = 0;
 
     for (const post of posts) {
-      // 3. Extract the Image URL
-      // The RSS feed hides the image inside HTML code. We need to find it.
-      // We look for: src="https://i.redd.it/..."
-      const imageMatch = post.content.match(
-        /src="(https:\/\/i\.redd\.it\/[^"]+\.(jpg|png|jpeg))"/,
+      const content = post.content || post.description || "";
+
+      // IMPROVED REGEX: Finds ANY url ending in jpg/png/jpeg/webp inside the HTML
+      // It doesn't care if it's i.redd.it or preview.redd.it anymore.
+      const imageMatch = content.match(
+        /(https?:\/\/[^"'\s]+\.(?:jpg|jpeg|png|webp))/i,
       );
 
       if (imageMatch) {
-        const imageUrl = imageMatch[1]; // The actual link
+        const imageUrl = imageMatch[1];
         const title = post.title;
-        const uniqueId = post.guid; // Reddit's unique ID for this post
+        const uniqueId = post.guid;
 
-        // 4. Save to Supabase
+        // Save to Supabase
         const { error } = await supabase
           .from("meme_queue")
           .insert([
@@ -59,9 +64,12 @@ async function scrapeWithProxy() {
           .ignore();
 
         if (!error) {
-          console.log(`   ✅ SAVED: ${title}`);
+          console.log(`   ✅ SAVED: ${title.substring(0, 30)}...`);
           count++;
         }
+      } else {
+        // Optional: See what we skipped
+        // console.log(`   ⏭️ Skipped (No image found): ${post.title.substring(0, 20)}...`);
       }
     }
     console.log(`\n🎉 Scrape finished. Added ${count} new memes.`);
