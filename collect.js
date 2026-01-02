@@ -39,8 +39,7 @@ async function scrapeWithProxy() {
     for (const post of posts) {
       const content = post.content || post.description || "";
 
-      // IMPROVED REGEX: Finds ANY url ending in jpg/png/jpeg/webp inside the HTML
-      // It doesn't care if it's i.redd.it or preview.redd.it anymore.
+      // Regex to find ANY image url inside the HTML
       const imageMatch = content.match(
         /(https?:\/\/[^"'\s]+\.(?:jpg|jpeg|png|webp))/i,
       );
@@ -50,26 +49,25 @@ async function scrapeWithProxy() {
         const title = post.title;
         const uniqueId = post.guid;
 
-        // Save to Supabase
-        const { error } = await supabase
-          .from("meme_queue")
-          .insert([
-            {
-              title: title,
-              image_url: imageUrl,
-              source_id: uniqueId,
-              status: "pending",
-            },
-          ])
-          .ignore();
+        // FIX: Removed .ignore() and used standard error handling
+        const { error } = await supabase.from("meme_queue").insert([
+          {
+            title: title,
+            image_url: imageUrl,
+            source_id: uniqueId,
+            status: "pending",
+          },
+        ]);
 
         if (!error) {
           console.log(`   ✅ SAVED: ${title.substring(0, 30)}...`);
           count++;
+        } else if (error.code === "23505") {
+          // 23505 is the code for "Unique Violation" (Duplicate)
+          // We silently skip it
+        } else {
+          console.error(`   ❌ DB Error: ${error.message}`);
         }
-      } else {
-        // Optional: See what we skipped
-        // console.log(`   ⏭️ Skipped (No image found): ${post.title.substring(0, 20)}...`);
       }
     }
     console.log(`\n🎉 Scrape finished. Added ${count} new memes.`);
