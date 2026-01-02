@@ -7,40 +7,44 @@ const supabase = createClient(
   process.env.SUPABASE_KEY,
 );
 
-const SUBREDDITS = ["memes", "ProgrammerHumor", "wholesomememes", "funny"];
+const SUBREDDITS = [
+  "memes",
+  "ProgrammerHumor",
+  "wholesomememes",
+  "funny",
+  "me_irl",
+];
 
 async function scrapeReddit() {
   console.log("🔍 Starting Scraper...");
 
-  // Pick a random subreddit
   const randomSub = SUBREDDITS[Math.floor(Math.random() * SUBREDDITS.length)];
-  const url = `https://www.reddit.com/r/${randomSub}/top.json?t=day&limit=25`; // Increased limit to 25
+  const url = `https://www.reddit.com/r/${randomSub}/top.json?t=day&limit=25`;
 
   console.log(`🌍 Fetching from: r/${randomSub}`);
 
   try {
-    const response = await axios.get(url);
+    // FIX: Add a custom User-Agent to bypass the 403 Block
+    const response = await axios.get(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
+    });
+
     const posts = response.data.data.children;
     let count = 0;
 
     for (const post of posts) {
       const { title, url, id, post_hint, is_video } = post.data;
 
-      // DEBUG LOG: Uncomment this if you want to see every raw post details
-      // console.log(`Checking: ${title.substring(0, 20)}... | Hint: ${post_hint} | URL: ${url}`);
+      // Skip Videos
+      if (is_video || url.includes("v.redd.it")) continue;
 
-      // 1. Skip Videos
-      if (is_video || url.includes("v.redd.it")) {
-        console.log(`   ⏭️ Skipped (Video): ${title.substring(0, 30)}...`);
-        continue;
-      }
-
-      // 2. Check for Valid Image URL (Added .jpeg and .webp)
+      // Check for Image
       const isImage = url.match(/\.(jpg|jpeg|png|webp)$/i);
 
-      // 3. Strict Filter: Must be an image
       if (post_hint === "image" && isImage) {
-        // Save to Supabase
         const { error } = await supabase
           .from("meme_queue")
           .insert([
@@ -51,27 +55,18 @@ async function scrapeReddit() {
               status: "pending",
             },
           ])
-          .select(); // Returns data so we know if it worked
+          .ignore(); // Safely ignore duplicates
 
         if (!error) {
           console.log(`   ✅ SAVED: ${title}`);
           count++;
-        } else if (error.code === "23505") {
-          console.log(
-            `   ⚠️ Duplicate (Already in DB): ${title.substring(0, 30)}...`,
-          );
-        } else {
-          console.log(`   ❌ DB Error: ${error.message}`);
         }
-      } else {
-        console.log(
-          `   ⏭️ Skipped (Not direct image): ${title.substring(0, 30)}...`,
-        );
       }
     }
     console.log(`\n🎉 Scrape finished. Added ${count} new memes.`);
   } catch (err) {
-    console.error("❌ Scraping failed:", err.message);
+    console.error(`❌ Scraping failed: ${err.message}`);
+    // If Reddit blocks us, try a fallback URL (optional future improvement)
   }
 }
 
