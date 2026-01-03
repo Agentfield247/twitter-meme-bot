@@ -13,6 +13,11 @@ const SUBREDDITS = [
   "wholesomememes",
   "funny",
   "me_irl",
+  "BlackPeopleTwitter", // Viral roasts
+  "WhitePeopleTwitter", // Viral politics/drama
+  "PublicFreakout", // (The image versions often allow context without the violence ban)
+  "Facepalm", // People being stupid (Very popular)
+  "CleverComebacks", // High engagement reading
 ];
 
 async function scrapeWithProxy() {

@@ -2,6 +2,7 @@ require("dotenv").config();
 const { TwitterApi } = require("twitter-api-v2");
 const { createClient } = require("@supabase/supabase-js");
 const axios = require("axios");
+const googleTrends = require("google-trends-api"); // NEW TOOL
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -15,20 +16,18 @@ const twitterClient = new TwitterApi({
   accessSecret: process.env.TWITTER_ACCESS_SECRET,
 });
 
-// --- NEW: THE ENGAGEMENT HOOKS ---
 const HOOKS = [
   "Tag a friend who is exactly like this 👇",
   "Why does this hit so hard? 😂",
-  "GM, Let's connect",
-  "If this isn't me, I don't know what is.",
-  "Who else feels attacked by this?",
-  "Send this to your work bestie.",
+  "DM, if you want to automate your memes so you do not lose engagement while away",
+  "Trending",
+  "#x",
+  "What are your thoughts",
   "Valid or nah?",
-  "I'm in this picture and I don't like it.",
   "Type 'YES' if you relate.",
-  "Daily reminder: You are doing great (but this is funny).",
 ];
 
+// Fallback tags if Google fails
 const HASHTAGS = [
   "#memes",
   "#humor",
@@ -37,8 +36,35 @@ const HASHTAGS = [
   "#lol",
   "#dailyhumor",
   "#trending",
-  "#memelo1d",
+  "#wierd",
 ];
+
+// --- NEW FUNCTION: GET REAL TRENDS ---
+async function getTrendingTag() {
+  try {
+    console.log("📈 Fetching Google Trends...");
+    // We look for trends in the US (Global standard for memes)
+    // You can change 'US' to 'NG' if you want Nigerian trends
+    const results = await googleTrends.realTimeTrends({
+      geo: "US",
+      category: "all",
+    });
+
+    const json = JSON.parse(results);
+    const story = json.storySummaries.trendingStories[0]; // Get the #1 top story
+
+    if (story && story.entityNames && story.entityNames.length > 0) {
+      // Clean the trend (e.g., "Elon Musk" -> "#ElonMusk")
+      const rawTrend = story.entityNames[0];
+      const cleanTrend = "#" + rawTrend.replace(/\s+/g, "");
+      console.log(`🔥 Hot Trend Found: ${cleanTrend}`);
+      return cleanTrend;
+    }
+  } catch (err) {
+    console.error("⚠️ Could not fetch trends, using defaults.");
+  }
+  return null; // Return nothing if it fails
+}
 
 async function postNextMeme() {
   console.log("🤖 Worker waking up...");
@@ -57,31 +83,34 @@ async function postNextMeme() {
   console.log(`🎯 Processing: ${meme.title}`);
 
   try {
-    // Download via Proxy (The "Laundry")
+    // 1. Get the Image
     const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(meme.image_url)}&output=jpg`;
     const imageResponse = await axios.get(proxyUrl, {
       responseType: "arraybuffer",
     });
     const imageBuffer = Buffer.from(imageResponse.data);
 
-    // Upload Media
+    // 2. Upload Media
     const mediaId = await twitterClient.v1.uploadMedia(imageBuffer, {
       mimeType: "image/jpeg",
     });
 
-    // --- NEW: CONSTRUCT THE SUPER CAPTION ---
+    // 3. Get a Live Trend
+    const trendingTag = await getTrendingTag();
 
-    // 1. Pick a random Hook
+    // 4. Build Caption
     const randomHook = HOOKS[Math.floor(Math.random() * HOOKS.length)];
-
-    // 2. Pick 3 random Hashtags (Don't spam the same ones)
     const shuffledTags = HASHTAGS.sort(() => 0.5 - Math.random());
-    const selectedTags = shuffledTags.slice(0, 3).join(" ");
+    let selectedTags = shuffledTags.slice(0, 2).join(" "); // Pick 2 standard tags
 
-    // 3. Build the Tweet Text
-    // Structure: "Meme Title" + "Invisible Char" + "Engagement Hook" + "Hashtags"
+    // Add the Trending Tag to the front (if we found one)
+    if (trendingTag) {
+      selectedTags = `${trendingTag} ${selectedTags}`;
+    }
+
     const finalTweet = `${meme.title}\n\n${randomHook}\n\n${selectedTags}`;
 
+    // 5. Post
     await twitterClient.v2.tweet({
       text: finalTweet,
       media: { media_ids: [mediaId] },
@@ -91,7 +120,7 @@ async function postNextMeme() {
       .from("meme_queue")
       .update({ status: "published" })
       .eq("id", meme.id);
-    console.log(`🚀 SUCCESS! Posted with Hook: "${randomHook}"`);
+    console.log(`🚀 SUCCESS! Posted with Trend: "${trendingTag || "None"}"`);
   } catch (err) {
     console.error("❌ Error posting meme:", err.message);
     console.log("🗑️ Trashing bad meme...");
